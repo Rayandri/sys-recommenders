@@ -173,6 +173,3 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-
-KuaiRec2.0/data/small_matrix.csv
-KuaiRec2.0/data/*.csv
