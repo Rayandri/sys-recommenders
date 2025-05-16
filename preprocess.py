@@ -268,8 +268,16 @@ def prepare_user_features(user_features_df, user_to_idx):
     # Keep only users in the user_to_idx mapping
     user_feats = user_feats[user_feats['user_id'].isin(user_to_idx.keys())]
     
-    # Extract numerical features
-    numerical_features = ['gender', 'age', 'active_days', 'follow_user_num', 'fans', 'video_num', 'play_nums']
+    # Extract numerical features that actually exist in the DataFrame
+    numerical_features = []
+    available_features = [
+        'follow_user_num', 'fans_user_num', 'friend_user_num', 'register_days'
+    ]
+    for col in available_features:
+        if col in user_feats.columns:
+            numerical_features.append(col)
+    
+    print(f"Using numerical features: {numerical_features}")
     
     # Set NaNs to mean values
     for col in numerical_features:
@@ -281,6 +289,18 @@ def prepare_user_features(user_features_df, user_to_idx):
     if len(numerical_features) > 0:
         user_feats[numerical_features] = scaler.fit_transform(user_feats[numerical_features])
     
+    # Add categorical features
+    categorical_features = []
+    available_categorical = [
+        'user_active_degree', 'follow_user_num_range', 'fans_user_num_range',
+        'friend_user_num_range', 'register_days_range'
+    ]
+    for col in available_categorical:
+        if col in user_feats.columns:
+            categorical_features.append(col)
+    
+    print(f"Using categorical features: {categorical_features}")
+            
     # Create sparse feature matrix
     user_indices = []
     feature_indices = []
@@ -295,6 +315,14 @@ def prepare_user_features(user_features_df, user_to_idx):
             feature_to_idx[col] = feature_idx
             feature_idx += 1
     
+    # Add categorical features mappings
+    for col in categorical_features:
+        if col in user_feats.columns:
+            for val in user_feats[col].dropna().unique():
+                feature_name = f"{col}_{val}"
+                feature_to_idx[feature_name] = feature_idx
+                feature_idx += 1
+    
     # Build feature matrix
     for _, row in user_feats.iterrows():
         if row['user_id'] not in user_to_idx:
@@ -304,10 +332,19 @@ def prepare_user_features(user_features_df, user_to_idx):
         
         # Add numerical features
         for col in numerical_features:
-            if col in user_feats.columns:
+            if col in user_feats.columns and not pd.isna(row[col]):
                 user_indices.append(user_idx)
                 feature_indices.append(feature_to_idx[col])
                 feature_values.append(float(row[col]))
+        
+        # Add categorical features
+        for col in categorical_features:
+            if col in user_feats.columns and not pd.isna(row[col]):
+                feature_name = f"{col}_{row[col]}"
+                if feature_name in feature_to_idx:
+                    user_indices.append(user_idx)
+                    feature_indices.append(feature_to_idx[feature_name])
+                    feature_values.append(1.0)
     
     # Create sparse matrix
     n_users = len(user_to_idx)
