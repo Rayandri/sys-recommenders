@@ -3,6 +3,7 @@ import numpy as np
 from scipy import sparse
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
+from tqdm import tqdm
 
 def derive_implicit_labels(df, watch_ratio_threshold=0.8):
     """
@@ -29,15 +30,14 @@ def filter_interactions(df, min_positive_interactions=3):
     Returns:
         Filtered DataFrame
     """
-    # Count positive interactions per user and item
+    print("Counting positive interactions per user and item...")
     user_pos_counts = df[df['label'] == 1]['user_id'].value_counts()
     item_pos_counts = df[df['label'] == 1]['video_id'].value_counts()
     
-    # Filter users and items with enough positive interactions
     valid_users = user_pos_counts[user_pos_counts >= min_positive_interactions].index
     valid_items = item_pos_counts[item_pos_counts >= min_positive_interactions].index
     
-    # Apply the filter
+    print("Applying filtering...")
     filtered_df = df[df['user_id'].isin(valid_users) & df['video_id'].isin(valid_items)]
     
     print(f"Original interactions: {len(df)}")
@@ -58,6 +58,7 @@ def create_user_item_maps(users, items):
     Returns:
         Tuple of mappings (user_to_idx, idx_to_user, item_to_idx, idx_to_item)
     """
+    print("Creating user and item mappings...")
     user_to_idx = {u: i for i, u in enumerate(users)}
     idx_to_user = {i: u for i, u in enumerate(users)}
     item_to_idx = {i: j for j, i in enumerate(items)}
@@ -83,12 +84,11 @@ def leave_n_out_split(df, user_to_idx, item_to_idx, test_ratio=0.2, neg_ratio=4,
     """
     np.random.seed(random_state)
     
-    # Create dictionaries to store positives and all interactions per user
+    print("Building user interaction dictionaries...")
     user_positives = defaultdict(list)
     user_all_items = defaultdict(list)
     
-    # Fill dictionaries
-    for _, row in df.iterrows():
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="Processing interactions"):
         user_idx = user_to_idx[row['user_id']]
         item_idx = item_to_idx[row['video_id']]
         
@@ -96,35 +96,30 @@ def leave_n_out_split(df, user_to_idx, item_to_idx, test_ratio=0.2, neg_ratio=4,
         if row['label'] == 1:
             user_positives[user_idx].append(item_idx)
     
-    # Initialize data structures for train/test split
     train_data = []
     test_data = []
     
     n_users = len(user_to_idx)
     n_items = len(item_to_idx)
     
-    # For each user
-    for user_idx in range(n_users):
+    print("Creating train-test split...")
+    for user_idx in tqdm(range(n_users), desc="Splitting users"):
         positives = user_positives[user_idx]
         
         if not positives:
             continue
         
-        # Split user's positives into train and test
         train_pos, test_pos = train_test_split(
             positives, test_size=test_ratio, random_state=random_state + user_idx
         )
         
-        # Add train positives
         for item_idx in train_pos:
             train_data.append((user_idx, item_idx, 1))
         
-        # Sample train negatives (4 per positive)
         all_items = set(range(n_items))
         known_items = set(user_all_items[user_idx])
         unknown_items = list(all_items - known_items)
         
-        # Sample train negatives
         if unknown_items:
             n_train_neg = len(train_pos) * neg_ratio
             if len(unknown_items) > n_train_neg:
@@ -135,15 +130,12 @@ def leave_n_out_split(df, user_to_idx, item_to_idx, test_ratio=0.2, neg_ratio=4,
             for item_idx in train_neg:
                 train_data.append((user_idx, item_idx, 0))
         
-        # Add test positives and sample test negatives
         for item_idx in test_pos:
             test_data.append((user_idx, item_idx, 1))
             
-        # Sample test negatives (99 per positive)
         if unknown_items:
             n_test_neg = len(test_pos) * test_neg_ratio
             
-            # If we need more negatives than available, sample with replacement
             if len(unknown_items) > n_test_neg:
                 test_neg = np.random.choice(unknown_items, size=n_test_neg, replace=False)
             else:
@@ -152,11 +144,11 @@ def leave_n_out_split(df, user_to_idx, item_to_idx, test_ratio=0.2, neg_ratio=4,
             for item_idx in test_neg:
                 test_data.append((user_idx, item_idx, 0))
     
-    # Convert to DataFrames
+    print("Creating DataFrames and matrices...")
     train_df = pd.DataFrame(train_data, columns=['user_idx', 'item_idx', 'label'])
     test_df = pd.DataFrame(test_data, columns=['user_idx', 'item_idx', 'label'])
     
-    # Create sparse matrices for LightFM
+    print("Building sparse matrices...")
     train_mat = sparse.coo_matrix(
         (np.ones(len(train_df[train_df['label'] == 1])), 
          (train_df[train_df['label'] == 1]['user_idx'], train_df[train_df['label'] == 1]['item_idx'])),
@@ -192,31 +184,28 @@ def prepare_item_features(item_categories_df, item_to_idx):
     Returns:
         Sparse matrix with item features
     """
-    # One-hot encode item categories
     from sklearn.preprocessing import OneHotEncoder
     
-    # Extract the categories as a list
+    print("Preparing item features...")
     item_cats = item_categories_df.copy()
     
-    # Keep only the items that are in our filtered dataset
     item_cats = item_cats[item_cats['video_id'].isin(item_to_idx.keys())]
     
-    # Create item feature matrix
     item_features = []
     item_indices = []
     feature_indices = []
     
-    # Create a mapping from category to feature index
+    print("Extracting categories...")
     all_categories = set()
-    for cats in item_cats['categories']:
+    for cats in tqdm(item_cats['categories'], desc="Processing categories"):
         categories = cats.split(';')
         all_categories.update(categories)
     
     cat_to_idx = {cat: i for i, cat in enumerate(all_categories)}
     n_features = len(cat_to_idx)
     
-    # Populate the feature matrix
-    for _, row in item_cats.iterrows():
+    print("Building item feature matrix...")
+    for _, row in tqdm(item_cats.iterrows(), total=len(item_cats), desc="Processing items"):
         if row['video_id'] not in item_to_idx:
             continue
             
@@ -228,7 +217,6 @@ def prepare_item_features(item_categories_df, item_to_idx):
             feature_indices.append(cat_to_idx[cat])
             item_features.append(1.0)
     
-    # Create sparse matrix
     item_features_mat = sparse.coo_matrix(
         (item_features, (item_indices, feature_indices)),
         shape=(len(item_to_idx), n_features)
@@ -247,19 +235,17 @@ def prepare_user_features(user_features_df, user_to_idx):
     Returns:
         Sparse matrix with user features
     """
-    # Select the columns to one-hot encode
+    print("Preparing user features...")
     cols_to_encode = ['user_active_degree', 'is_live_streamer', 'follow_user_num_range']
     
-    # Keep only the users that are in our filtered dataset
     user_feat = user_features_df.copy()
     user_feat = user_feat[user_feat['user_id'].isin(user_to_idx.keys())]
     
-    # Initialize lists for COO matrix
     user_indices = []
     feature_indices = []
     feature_values = []
     
-    # Create mappings for categorical features
+    print("Creating feature mappings...")
     feature_map = {}
     current_idx = 0
     
@@ -270,21 +256,20 @@ def prepare_user_features(user_features_df, user_to_idx):
     
     n_features = current_idx
     
-    # Fill in the feature matrix
-    for _, row in user_feat.iterrows():
+    print("Building user feature matrix...")
+    for _, row in tqdm(user_feat.iterrows(), total=len(user_feat), desc="Processing users"):
         if row['user_id'] not in user_to_idx:
             continue
             
         user_idx = user_to_idx[row['user_id']]
         
         for col in cols_to_encode:
-            if pd.notna(row[col]):  # Check for NaN values
+            if pd.notna(row[col]):
                 feat_idx = feature_map[col][row[col]]
                 user_indices.append(user_idx)
                 feature_indices.append(feat_idx)
                 feature_values.append(1.0)
     
-    # Create sparse matrix
     user_features_mat = sparse.coo_matrix(
         (feature_values, (user_indices, feature_indices)),
         shape=(len(user_to_idx), n_features)

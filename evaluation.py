@@ -21,20 +21,16 @@ def precision_at_k(model, test_df, n_users, n_items, user_features=None, item_fe
     """
     precisions = []
     
-    # Group test data by user
     user_groups = test_df.groupby('user_idx')
     
-    for user_idx, group in user_groups:
-        # Get positive items for this user
+    for user_idx, group in tqdm(user_groups, desc=f"Calculating precision@{k}", leave=False):
         pos_items = group[group['label'] == 1]['item_idx'].values
         
         if len(pos_items) == 0:
             continue
             
-        # Get all items for this user
         all_items = group['item_idx'].values
         
-        # Predict scores for all items
         scores = model.predict(
             user_ids=np.repeat(user_idx, len(all_items)),
             item_ids=all_items,
@@ -42,10 +38,8 @@ def precision_at_k(model, test_df, n_users, n_items, user_features=None, item_fe
             item_features=item_features
         )
         
-        # Get top k items based on predicted scores
         top_k_items = all_items[np.argsort(-scores)[:k]]
         
-        # Calculate precision for this user
         precision = len(np.intersect1d(top_k_items, pos_items)) / k
         precisions.append(precision)
     
@@ -69,20 +63,16 @@ def recall_at_k(model, test_df, n_users, n_items, user_features=None, item_featu
     """
     recalls = []
     
-    # Group test data by user
     user_groups = test_df.groupby('user_idx')
     
-    for user_idx, group in user_groups:
-        # Get positive items for this user
+    for user_idx, group in tqdm(user_groups, desc=f"Calculating recall@{k}", leave=False):
         pos_items = group[group['label'] == 1]['item_idx'].values
         
         if len(pos_items) == 0:
             continue
             
-        # Get all items for this user
         all_items = group['item_idx'].values
         
-        # Predict scores for all items
         scores = model.predict(
             user_ids=np.repeat(user_idx, len(all_items)),
             item_ids=all_items,
@@ -90,10 +80,8 @@ def recall_at_k(model, test_df, n_users, n_items, user_features=None, item_featu
             item_features=item_features
         )
         
-        # Get top k items based on predicted scores
         top_k_items = all_items[np.argsort(-scores)[:k]]
         
-        # Calculate recall for this user
         recall = len(np.intersect1d(top_k_items, pos_items)) / len(pos_items)
         recalls.append(recall)
     
@@ -117,18 +105,15 @@ def ndcg_at_k(model, test_df, n_users, n_items, user_features=None, item_feature
     """
     ndcgs = []
     
-    # Group test data by user
     user_groups = test_df.groupby('user_idx')
     
-    for user_idx, group in user_groups:
-        # Get items and labels for this user
+    for user_idx, group in tqdm(user_groups, desc=f"Calculating NDCG@{k}", leave=False):
         items = group['item_idx'].values
         labels = group['label'].values
         
         if sum(labels) == 0:
             continue
             
-        # Predict scores for all items
         scores = model.predict(
             user_ids=np.repeat(user_idx, len(items)),
             item_ids=items,
@@ -136,21 +121,16 @@ def ndcg_at_k(model, test_df, n_users, n_items, user_features=None, item_feature
             item_features=item_features
         )
         
-        # Sort by scores
         sorted_indices = np.argsort(-scores)
         sorted_labels = labels[sorted_indices]
         
-        # Truncate to top k
         sorted_labels = sorted_labels[:k]
         
-        # Calculate DCG
         dcg = np.sum((2**sorted_labels - 1) / np.log2(np.arange(2, len(sorted_labels) + 2)))
         
-        # Calculate ideal DCG
         ideal_labels = np.sort(labels)[::-1][:k]
         idcg = np.sum((2**ideal_labels - 1) / np.log2(np.arange(2, len(ideal_labels) + 2)))
         
-        # Calculate NDCG
         if idcg > 0:
             ndcg = dcg / idcg
             ndcgs.append(ndcg)
@@ -172,12 +152,21 @@ def evaluate_model(model, test_df, n_users, n_items, user_features=None, item_fe
     Returns:
         Dictionary of metrics
     """
-    metrics = {
-        'precision@5': precision_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5),
-        'recall@5': recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5),
-        'recall@10': recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10),
-        'ndcg@10': ndcg_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)
-    }
+    print("Evaluating model on multiple metrics...")
+    metrics = {}
+    
+    with tqdm(total=4, desc="Computing metrics") as pbar:
+        metrics['precision@5'] = precision_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
+        pbar.update(1)
+        
+        metrics['recall@5'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
+        pbar.update(1)
+        
+        metrics['recall@10'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)
+        pbar.update(1)
+        
+        metrics['ndcg@10'] = ndcg_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)
+        pbar.update(1)
     
     return metrics
 

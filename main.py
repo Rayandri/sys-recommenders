@@ -40,7 +40,6 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
     print("Training Baseline Model (LightFM with BPR loss)")
     print("="*50)
     
-    # Initialize model
     model = lightfm.LightFM(
         loss="bpr",
         no_components=64,
@@ -48,27 +47,23 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
         random_state=RANDOM_SEED
     )
     
-    # Initialize metrics storage
     train_metrics = []
     test_metrics = []
     epochs_list = []
     
-    # Training loop
     start_time = time.time()
     
-    for epoch in range(1, epochs + 1):
-        # Train one epoch
+    progress_bar = tqdm(range(1, epochs + 1), desc="Training baseline model")
+    for epoch in progress_bar:
         model.fit_partial(
             train_data['train_interactions'],
             epochs=1,
             num_threads=NUM_THREADS
         )
         
-        # Evaluate model
         if epoch % eval_every == 0 or epoch == epochs:
-            print(f"\nEvaluating at epoch {epoch}...")
+            progress_bar.set_description(f"Evaluating at epoch {epoch}")
             
-            # Evaluate on train set
             train_metric = evaluate_model(
                 model, 
                 train_data['train_df'], 
@@ -76,7 +71,6 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
                 train_data['n_items']
             )
             
-            # Evaluate on test set
             test_metric = evaluate_model(
                 model, 
                 test_data['test_df'], 
@@ -84,19 +78,21 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
                 test_data['n_items']
             )
             
-            # Store metrics
             train_metrics.append(train_metric)
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
-            # Print metrics
-            print(f"Epoch {epoch}:")
-            print(f"  Train: {train_metric}")
-            print(f"  Test:  {test_metric}")
+            progress_bar.set_postfix({
+                'train_recall@5': f"{train_metric['recall@5']:.4f}",
+                'test_recall@5': f"{test_metric['recall@5']:.4f}"
+            })
     
-    # Calculate training time
     training_time = time.time() - start_time
     print(f"\nTotal training time: {training_time:.2f} seconds")
+    
+    print("\nFinal metrics:")
+    print(f"  Train: {train_metrics[-1]}")
+    print(f"  Test:  {test_metrics[-1]}")
     
     return model, train_metrics, test_metrics, epochs_list, training_time
 
@@ -119,7 +115,6 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     print("Training Hybrid Model (LightFM with user and item features)")
     print("="*50)
     
-    # Initialize model
     model = lightfm.LightFM(
         loss="bpr",
         no_components=64,
@@ -127,16 +122,14 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
         random_state=RANDOM_SEED
     )
     
-    # Initialize metrics storage
     train_metrics = []
     test_metrics = []
     epochs_list = []
     
-    # Training loop
     start_time = time.time()
     
-    for epoch in range(1, epochs + 1):
-        # Train one epoch
+    progress_bar = tqdm(range(1, epochs + 1), desc="Training hybrid model")
+    for epoch in progress_bar:
         model.fit_partial(
             train_data['train_interactions'],
             user_features=user_features,
@@ -145,11 +138,9 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
             num_threads=NUM_THREADS
         )
         
-        # Evaluate model
         if epoch % eval_every == 0 or epoch == epochs:
-            print(f"\nEvaluating at epoch {epoch}...")
+            progress_bar.set_description(f"Evaluating at epoch {epoch}")
             
-            # Evaluate on train set
             train_metric = evaluate_model(
                 model, 
                 train_data['train_df'], 
@@ -159,7 +150,6 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
                 item_features
             )
             
-            # Evaluate on test set
             test_metric = evaluate_model(
                 model, 
                 test_data['test_df'], 
@@ -169,19 +159,21 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
                 item_features
             )
             
-            # Store metrics
             train_metrics.append(train_metric)
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
-            # Print metrics
-            print(f"Epoch {epoch}:")
-            print(f"  Train: {train_metric}")
-            print(f"  Test:  {test_metric}")
+            progress_bar.set_postfix({
+                'train_recall@5': f"{train_metric['recall@5']:.4f}",
+                'test_recall@5': f"{test_metric['recall@5']:.4f}"
+            })
     
-    # Calculate training time
     training_time = time.time() - start_time
     print(f"\nTotal training time: {training_time:.2f} seconds")
+    
+    print("\nFinal metrics:")
+    print(f"  Train: {train_metrics[-1]}")
+    print(f"  Test:  {test_metrics[-1]}")
     
     return model, train_metrics, test_metrics, epochs_list, training_time
 
@@ -196,11 +188,9 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
     """
-    # Print system info
     print(f"Using {NUM_THREADS} CPU threads")
     print(f"Data directory: {DATA_DIR}")
     
-    # Ensure data files exist
     matrix_path = DATA_DIR / matrix_file
     item_categories_path = DATA_DIR / item_categories_file
     user_features_path = DATA_DIR / user_features_file
@@ -212,31 +202,29 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
     if not user_features_path.exists():
         raise FileNotFoundError(f"User features file not found: {user_features_path}")
     
-    # Load data
     print(f"\nLoading data from {matrix_file}...")
     interactions_df = load_interaction_data(matrix_path)
+    
+    print(f"Loading item categories...")
     item_categories_df = load_item_categories(item_categories_path)
+    
+    print(f"Loading user features...")
     user_features_df = load_user_features(user_features_path)
     
-    # Print basic dataset info
     print(f"\nInteraction matrix shape: {interactions_df.shape}")
     print(f"Item categories shape: {item_categories_df.shape}")
     print(f"User features shape: {user_features_df.shape}")
     
-    # Step 2: Derive implicit labels
     print("\nDeriving implicit labels (watch_ratio >= 0.8)...")
     interactions_df = derive_implicit_labels(interactions_df)
     positive_ratio = interactions_df['label'].mean()
     print(f"Positive interactions ratio: {positive_ratio:.4f}")
     
-    # Step 3: Filter users and items
     print("\nFiltering users and items with >= 3 positive interactions...")
     filtered_df, valid_users, valid_items = filter_interactions(interactions_df)
     
-    # Create mappings
     user_to_idx, idx_to_user, item_to_idx, idx_to_item = create_user_item_maps(valid_users, valid_items)
     
-    # Step 4: Split data
     print("\nSplitting data (leave-n-out)...")
     split_data = leave_n_out_split(
         filtered_df, 
@@ -248,7 +236,6 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         random_state=RANDOM_SEED
     )
     
-    # Step 5: Train baseline model
     baseline_model, baseline_train_metrics, baseline_test_metrics, baseline_epochs, baseline_time = train_baseline_model(
         split_data, 
         split_data, 
@@ -256,12 +243,10 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         eval_every=eval_every
     )
     
-    # Prepare features for hybrid model
     print("\nPreparing item and user features...")
     item_features_mat = prepare_item_features(item_categories_df, item_to_idx)
     user_features_mat = prepare_user_features(user_features_df, user_to_idx)
     
-    # Step 6: Train hybrid model
     hybrid_model, hybrid_train_metrics, hybrid_test_metrics, hybrid_epochs, hybrid_time = train_hybrid_model(
         split_data, 
         split_data, 
@@ -271,7 +256,6 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         eval_every=eval_every
     )
     
-    # Step 7: Plot learning curves
     metric_names = ['precision@5', 'recall@5', 'recall@10', 'ndcg@10']
     
     print("\nPlotting learning curves for baseline model...")
@@ -292,7 +276,6 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         'hybrid'
     )
     
-    # Compare final results
     final_baseline = baseline_test_metrics[-1]
     final_hybrid = hybrid_test_metrics[-1]
     
@@ -329,12 +312,10 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Override data directory if specified
     if args.data_dir:
         DATA_DIR = Path(args.data_dir)
         print(f"Using custom data directory: {DATA_DIR}")
     
-    # Run the pipeline
     results = run_pipeline(
         args.matrix,
         'item_categories.csv',
