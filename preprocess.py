@@ -270,10 +270,7 @@ def prepare_user_features(user_features_df, user_to_idx):
     
     # Extract numerical features that actually exist in the DataFrame
     numerical_features = []
-    available_features = [
-        'follow_user_num', 'fans_user_num', 'friend_user_num', 'register_days'
-    ]
-    for col in available_features:
+    for col in ['follow_user_num', 'fans_user_num', 'friend_user_num', 'register_days']:
         if col in user_feats.columns:
             numerical_features.append(col)
     
@@ -287,15 +284,15 @@ def prepare_user_features(user_features_df, user_to_idx):
     # Standardize numerical features
     scaler = StandardScaler()
     if len(numerical_features) > 0:
-        user_feats[numerical_features] = scaler.fit_transform(user_feats[numerical_features])
+        # Make sure all columns in numerical_features exist in the DataFrame
+        existing_numerical = [col for col in numerical_features if col in user_feats.columns]
+        if existing_numerical:
+            user_feats[existing_numerical] = scaler.fit_transform(user_feats[existing_numerical])
     
     # Add categorical features
     categorical_features = []
-    available_categorical = [
-        'user_active_degree', 'follow_user_num_range', 'fans_user_num_range',
-        'friend_user_num_range', 'register_days_range'
-    ]
-    for col in available_categorical:
+    for col in ['user_active_degree', 'follow_user_num_range', 'fans_user_num_range',
+                'friend_user_num_range', 'register_days_range']:
         if col in user_feats.columns:
             categorical_features.append(col)
     
