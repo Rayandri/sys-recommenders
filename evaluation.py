@@ -87,6 +87,57 @@ def recall_at_k(model, test_df, n_users, n_items, user_features=None, item_featu
     
     return np.mean(recalls)
 
+def f1_at_k(model, test_df, n_users, n_items, user_features=None, item_features=None, k=5):
+    """
+    Calculate F1 score at k
+    
+    Args:
+        model: Trained LightFM model
+        test_df: Test DataFrame with user_idx, item_idx, label
+        n_users: Number of users
+        n_items: Number of items
+        user_features: User features (optional)
+        item_features: Item features (optional)
+        k: Cutoff for F1 calculation
+        
+    Returns:
+        F1@k score
+    """
+    f1_scores = []
+    
+    user_groups = test_df.groupby('user_idx')
+    
+    for user_idx, group in tqdm(user_groups, desc=f"Calculating F1@{k}", leave=False):
+        pos_items = group[group['label'] == 1]['item_idx'].values
+        
+        if len(pos_items) == 0:
+            continue
+            
+        all_items = group['item_idx'].values
+        
+        scores = model.predict(
+            user_ids=np.repeat(user_idx, len(all_items)),
+            item_ids=all_items,
+            user_features=user_features,
+            item_features=item_features
+        )
+        
+        top_k_items = all_items[np.argsort(-scores)[:k]]
+        
+        n_relevant_and_recommended = len(np.intersect1d(top_k_items, pos_items))
+        
+        precision = n_relevant_and_recommended / k if k > 0 else 0
+        recall = n_relevant_and_recommended / len(pos_items) if len(pos_items) > 0 else 0
+        
+        if precision + recall > 0:
+            f1 = 2 * (precision * recall) / (precision + recall)
+        else:
+            f1 = 0
+            
+        f1_scores.append(f1)
+    
+    return np.mean(f1_scores)
+
 def ndcg_at_k(model, test_df, n_users, n_items, user_features=None, item_features=None, k=10):
     """
     Calculate NDCG@k
@@ -155,11 +206,14 @@ def evaluate_model(model, test_df, n_users, n_items, user_features=None, item_fe
     print("Evaluating model on multiple metrics...")
     metrics = {}
     
-    with tqdm(total=4, desc="Computing metrics") as pbar:
+    with tqdm(total=5, desc="Computing metrics") as pbar:
         metrics['precision@5'] = precision_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
         pbar.update(1)
         
         metrics['recall@5'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
+        pbar.update(1)
+        
+        metrics['f1@5'] = f1_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
         pbar.update(1)
         
         metrics['recall@10'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)

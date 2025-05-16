@@ -65,6 +65,7 @@ We evaluated both models every 10 epochs on the following metrics:
 
 - **Precision@5**: Percentage of recommended items that are relevant
 - **Recall@5**: Percentage of relevant items that are recommended (k=5)
+- **F1@5**: Harmonic mean of precision and recall at k=5
 - **Recall@10**: Percentage of relevant items that are recommended (k=10)
 - **NDCG@10**: Normalized Discounted Cumulative Gain at k=10
 
@@ -78,6 +79,7 @@ The evaluation was conducted on the held-out test set for each user.
 |--------|----------|--------|-------------|
 | Precision@5 | x.xxx | x.xxx | xx.x% |
 | Recall@5 | x.xxx | x.xxx | xx.x% |
+| F1@5 | x.xxx | x.xxx | xx.x% |
 | Recall@10 | x.xxx | x.xxx | xx.x% |
 | NDCG@10 | x.xxx | x.xxx | xx.x% |
 

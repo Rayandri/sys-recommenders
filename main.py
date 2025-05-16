@@ -83,8 +83,8 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
             epochs_list.append(epoch)
             
             progress_bar.set_postfix({
-                'train_recall@5': f"{train_metric['recall@5']:.4f}",
-                'test_recall@5': f"{test_metric['recall@5']:.4f}"
+                'train_f1@5': f"{train_metric['f1@5']:.4f}",
+                'test_f1@5': f"{test_metric['f1@5']:.4f}"
             })
     
     training_time = time.time() - start_time
@@ -164,8 +164,8 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
             epochs_list.append(epoch)
             
             progress_bar.set_postfix({
-                'train_recall@5': f"{train_metric['recall@5']:.4f}",
-                'test_recall@5': f"{test_metric['recall@5']:.4f}"
+                'train_f1@5': f"{train_metric['f1@5']:.4f}",
+                'test_f1@5': f"{test_metric['f1@5']:.4f}"
             })
     
     training_time = time.time() - start_time
@@ -256,7 +256,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         eval_every=eval_every
     )
     
-    metric_names = ['precision@5', 'recall@5', 'recall@10', 'ndcg@10']
+    metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10']
     
     print("\nPlotting learning curves for baseline model...")
     plot_learning_curves(
