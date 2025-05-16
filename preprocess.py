@@ -4,6 +4,7 @@ from scipy import sparse
 from sklearn.model_selection import train_test_split
 from collections import defaultdict
 from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
 
 def derive_implicit_labels(df, watch_ratio_threshold=0.8):
     """
@@ -185,6 +186,8 @@ def prepare_item_features(item_categories_df, item_to_idx):
         Sparse matrix with item features
     """
     from sklearn.preprocessing import OneHotEncoder
+    from scipy import sparse
+    import numpy as np
     
     print("Preparing item features...")
     item_cats = item_categories_df.copy()
@@ -198,44 +201,53 @@ def prepare_item_features(item_categories_df, item_to_idx):
     print("Extracting categories...")
     all_categories = set()
     for feat in tqdm(item_cats['feat'], desc="Processing categories"):
-        # Convert string representation of list to actual list
         if isinstance(feat, str):
-            categories = eval(feat)
-            if not isinstance(categories, list):
-                categories = [categories]
-        else:
-            categories = [feat]
-        # Convert all category IDs to strings for consistency
-        categories = [str(cat) for cat in categories]
-        all_categories.update(categories)
+            categories = [cat.strip() for cat in feat.split(',')]
+            all_categories.update(categories)
     
-    cat_to_idx = {cat: i for i, cat in enumerate(all_categories)}
-    n_features = len(cat_to_idx)
+    category_to_idx = {cat: i for i, cat in enumerate(sorted(all_categories))}
     
-    print("Building item feature matrix...")
-    for _, row in tqdm(item_cats.iterrows(), total=len(item_cats), desc="Processing items"):
+    print(f"Total unique categories: {len(category_to_idx)}")
+    
+    feature_idx = 0
+    for idx, row in tqdm(item_cats.iterrows(), total=len(item_cats), desc="Building feature matrix"):
         if row['video_id'] not in item_to_idx:
             continue
             
         item_idx = item_to_idx[row['video_id']]
-        if isinstance(row['feat'], str):
-            categories = eval(row['feat'])
-            if not isinstance(categories, list):
-                categories = [categories]
-        else:
-            categories = [row['feat']]
-        # Convert all category IDs to strings for consistency
-        categories = [str(cat) for cat in categories]
         
-        for cat in categories:
-            item_indices.append(item_idx)
-            feature_indices.append(cat_to_idx[cat])
-            item_features.append(1.0)
+        # Extract categories from the feat column
+        if isinstance(row['feat'], str):
+            categories = [cat.strip() for cat in row['feat'].split(',')]
+            
+            for cat in categories:
+                if cat in category_to_idx:
+                    item_indices.append(item_idx)
+                    feature_indices.append(category_to_idx[cat])
+                    item_features.append(1.0)  # Using binary features
     
-    item_features_mat = sparse.coo_matrix(
+    print("Creating sparse feature matrix...")
+    n_items = len(item_to_idx)
+    n_features = len(category_to_idx)
+    
+    # Create sparse matrix
+    item_features_mat = sparse.csr_matrix(
         (item_features, (item_indices, feature_indices)),
-        shape=(len(item_to_idx), n_features)
+        shape=(n_items, n_features)
     )
+    
+    # Add normalization to avoid feature dominance
+    # Normalize rows to sum to 1.0 (if they have any features)
+    row_sums = item_features_mat.sum(axis=1).A1
+    nonzero_rows = row_sums > 0
+    if nonzero_rows.any():
+        item_features_mat[nonzero_rows] = item_features_mat[nonzero_rows].multiply(
+            1.0 / row_sums[nonzero_rows][:, np.newaxis]
+        )
+    
+    print(f"Item feature matrix shape: {item_features_mat.shape}")
+    sparsity = 1.0 - item_features_mat.nnz / (item_features_mat.shape[0] * item_features_mat.shape[1])
+    print(f"Matrix sparsity: {sparsity:.4f}")
     
     return item_features_mat
 
@@ -251,43 +263,63 @@ def prepare_user_features(user_features_df, user_to_idx):
         Sparse matrix with user features
     """
     print("Preparing user features...")
-    cols_to_encode = ['user_active_degree', 'is_live_streamer', 'follow_user_num_range']
+    user_feats = user_features_df.copy()
     
-    user_feat = user_features_df.copy()
-    user_feat = user_feat[user_feat['user_id'].isin(user_to_idx.keys())]
+    # Keep only users in the user_to_idx mapping
+    user_feats = user_feats[user_feats['user_id'].isin(user_to_idx.keys())]
     
+    # Extract numerical features
+    numerical_features = ['gender', 'age', 'active_days', 'follow_user_num', 'fans', 'video_num', 'play_nums']
+    
+    # Set NaNs to mean values
+    for col in numerical_features:
+        if col in user_feats.columns:
+            user_feats[col] = user_feats[col].fillna(user_feats[col].mean())
+    
+    # Standardize numerical features
+    scaler = StandardScaler()
+    if len(numerical_features) > 0:
+        user_feats[numerical_features] = scaler.fit_transform(user_feats[numerical_features])
+    
+    # Create sparse feature matrix
     user_indices = []
     feature_indices = []
     feature_values = []
     
-    print("Creating feature mappings...")
-    feature_map = {}
-    current_idx = 0
+    feature_to_idx = {}
+    feature_idx = 0
     
-    for col in cols_to_encode:
-        unique_values = user_feat[col].unique()
-        feature_map[col] = {val: idx + current_idx for idx, val in enumerate(unique_values)}
-        current_idx += len(unique_values)
+    # Add numerical features
+    for col in numerical_features:
+        if col in user_feats.columns:
+            feature_to_idx[col] = feature_idx
+            feature_idx += 1
     
-    n_features = current_idx
-    
-    print("Building user feature matrix...")
-    for _, row in tqdm(user_feat.iterrows(), total=len(user_feat), desc="Processing users"):
+    # Build feature matrix
+    for _, row in user_feats.iterrows():
         if row['user_id'] not in user_to_idx:
             continue
             
         user_idx = user_to_idx[row['user_id']]
         
-        for col in cols_to_encode:
-            if pd.notna(row[col]):
-                feat_idx = feature_map[col][row[col]]
+        # Add numerical features
+        for col in numerical_features:
+            if col in user_feats.columns:
                 user_indices.append(user_idx)
-                feature_indices.append(feat_idx)
-                feature_values.append(1.0)
+                feature_indices.append(feature_to_idx[col])
+                feature_values.append(float(row[col]))
     
-    user_features_mat = sparse.coo_matrix(
+    # Create sparse matrix
+    n_users = len(user_to_idx)
+    n_features = len(feature_to_idx)
+    
+    user_features_mat = sparse.csr_matrix(
         (feature_values, (user_indices, feature_indices)),
-        shape=(len(user_to_idx), n_features)
+        shape=(n_users, n_features)
     )
+    
+    print(f"User feature matrix shape: {user_features_mat.shape}")
+    sparsity = 1.0 - user_features_mat.nnz / (user_features_mat.shape[0] * user_features_mat.shape[1])
+    print(f"Matrix sparsity: {sparsity:.4f}")
     
     return user_features_mat 

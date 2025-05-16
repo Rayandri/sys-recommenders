@@ -116,9 +116,11 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     print("="*50)
     
     model = lightfm.LightFM(
-        loss="bpr",
-        no_components=64,
-        learning_rate=0.05,
+        loss="warp",
+        no_components=128,
+        learning_rate=0.01,
+        item_alpha=1e-6,
+        user_alpha=1e-6,
         random_state=RANDOM_SEED
     )
     

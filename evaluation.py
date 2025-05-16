@@ -201,28 +201,154 @@ def evaluate_model(model, test_df, n_users, n_items, user_features=None, item_fe
         item_features: Item features (optional)
         
     Returns:
-        Dictionary of metrics
+        Dictionary with evaluation metrics
     """
-    print("Evaluating model on multiple metrics...")
     metrics = {}
     
-    with tqdm(total=5, desc="Computing metrics") as pbar:
-        metrics['precision@5'] = precision_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
-        pbar.update(1)
+    # Calculate precision@k
+    for k in [5, 10]:
+        metrics[f'precision@{k}'] = precision_at_k(
+            model, test_df, n_users, n_items, user_features, item_features, k
+        )
         
-        metrics['recall@5'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
-        pbar.update(1)
+        metrics[f'recall@{k}'] = recall_at_k(
+            model, test_df, n_users, n_items, user_features, item_features, k
+        )
         
-        metrics['f1@5'] = f1_at_k(model, test_df, n_users, n_items, user_features, item_features, k=5)
-        pbar.update(1)
+        metrics[f'f1@{k}'] = f1_at_k(
+            model, test_df, n_users, n_items, user_features, item_features, k
+        )
         
-        metrics['recall@10'] = recall_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)
-        pbar.update(1)
+        metrics[f'ndcg@{k}'] = ndcg_at_k(
+            model, test_df, n_users, n_items, user_features, item_features, k
+        )
+    
+    # Calculate coverage and diversity
+    if hasattr(model, 'item_embeddings'):
+        metrics['item_coverage@10'] = calculate_coverage(
+            model, test_df, n_users, n_items, user_features, item_features, k=10
+        )
         
-        metrics['ndcg@10'] = ndcg_at_k(model, test_df, n_users, n_items, user_features, item_features, k=10)
-        pbar.update(1)
+        metrics['diversity@10'] = calculate_diversity(
+            model, test_df, n_users, n_items, user_features, item_features, k=10
+        )
     
     return metrics
+
+def calculate_coverage(model, test_df, n_users, n_items, user_features=None, item_features=None, k=10):
+    """
+    Calculate the percentage of items that appear in recommendations for any user
+    
+    Args:
+        model: Trained LightFM model
+        test_df: Test DataFrame with user_idx, item_idx, label
+        n_users: Number of users
+        n_items: Number of items
+        user_features: User features (optional)
+        item_features: Item features (optional)
+        k: Recommendation cutoff
+        
+    Returns:
+        Coverage percentage
+    """
+    unique_users = test_df['user_idx'].unique()
+    recommended_items = set()
+    
+    for user_idx in tqdm(unique_users, desc=f"Calculating coverage@{k}", leave=False):
+        # Get all possible items
+        all_items = np.arange(n_items)
+        
+        # Predict scores
+        scores = model.predict(
+            user_ids=np.repeat(user_idx, len(all_items)),
+            item_ids=all_items,
+            user_features=user_features,
+            item_features=item_features
+        )
+        
+        # Get top k items
+        top_k_items = all_items[np.argsort(-scores)[:k]]
+        recommended_items.update(top_k_items)
+    
+    # Calculate coverage
+    coverage = len(recommended_items) / n_items
+    return coverage
+
+def calculate_diversity(model, test_df, n_users, n_items, user_features=None, item_features=None, k=10):
+    """
+    Calculate average pairwise distance between recommended items using item embeddings
+    
+    Args:
+        model: Trained LightFM model
+        test_df: Test DataFrame with user_idx, item_idx, label
+        n_users: Number of users
+        n_items: Number of items
+        user_features: User features (optional)
+        item_features: Item features (optional)
+        k: Recommendation cutoff
+        
+    Returns:
+        Average diversity score
+    """
+    if not hasattr(model, 'item_embeddings'):
+        return 0.0
+        
+    unique_users = test_df['user_idx'].unique()
+    diversity_scores = []
+    
+    # Get item embeddings
+    item_embeddings = model.item_embeddings
+    
+    for user_idx in tqdm(unique_users, desc=f"Calculating diversity@{k}", leave=False):
+        # Get all possible items
+        all_items = np.arange(n_items)
+        
+        # Predict scores
+        scores = model.predict(
+            user_ids=np.repeat(user_idx, len(all_items)),
+            item_ids=all_items,
+            user_features=user_features,
+            item_features=item_features
+        )
+        
+        # Get top k items
+        top_k_items = all_items[np.argsort(-scores)[:k]]
+        
+        if len(top_k_items) <= 1:
+            continue
+            
+        # Calculate pairwise distances
+        user_diversity = 0.0
+        count = 0
+        
+        for i in range(len(top_k_items)):
+            for j in range(i+1, len(top_k_items)):
+                item_i = top_k_items[i]
+                item_j = top_k_items[j]
+                
+                # Calculate cosine distance
+                embedding_i = item_embeddings[item_i]
+                embedding_j = item_embeddings[item_j]
+                
+                dot_product = np.dot(embedding_i, embedding_j)
+                norm_i = np.linalg.norm(embedding_i)
+                norm_j = np.linalg.norm(embedding_j)
+                
+                similarity = dot_product / (norm_i * norm_j) if norm_i > 0 and norm_j > 0 else 0
+                distance = 1.0 - similarity
+                
+                user_diversity += distance
+                count += 1
+        
+        if count > 0:
+            user_diversity /= count
+            diversity_scores.append(user_diversity)
+    
+    # Calculate average diversity
+    if diversity_scores:
+        return np.mean(diversity_scores)
+    else:
+        return 0.0
 
 def plot_learning_curves(train_metrics, test_metrics, metric_names, epochs, model_name):
     """
