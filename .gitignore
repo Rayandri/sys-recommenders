@@ -174,4 +174,5 @@ cython_debug/
 .pypirc
 
 
-*.csv
+KuaiRec2.0/data/small_matrix.csv
+KuaiRec2.0/data/*.csv
