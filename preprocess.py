@@ -197,8 +197,16 @@ def prepare_item_features(item_categories_df, item_to_idx):
     
     print("Extracting categories...")
     all_categories = set()
-    for cats in tqdm(item_cats['categories'], desc="Processing categories"):
-        categories = cats.split(';')
+    for feat in tqdm(item_cats['feat'], desc="Processing categories"):
+        # Convert string representation of list to actual list
+        if isinstance(feat, str):
+            categories = eval(feat)
+            if not isinstance(categories, list):
+                categories = [categories]
+        else:
+            categories = [feat]
+        # Convert all category IDs to strings for consistency
+        categories = [str(cat) for cat in categories]
         all_categories.update(categories)
     
     cat_to_idx = {cat: i for i, cat in enumerate(all_categories)}
@@ -210,7 +218,14 @@ def prepare_item_features(item_categories_df, item_to_idx):
             continue
             
         item_idx = item_to_idx[row['video_id']]
-        categories = row['categories'].split(';')
+        if isinstance(row['feat'], str):
+            categories = eval(row['feat'])
+            if not isinstance(categories, list):
+                categories = [categories]
+        else:
+            categories = [row['feat']]
+        # Convert all category IDs to strings for consistency
+        categories = [str(cat) for cat in categories]
         
         for cat in categories:
             item_indices.append(item_idx)
