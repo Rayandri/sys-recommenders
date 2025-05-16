@@ -179,7 +179,8 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     
     return model, train_metrics, test_metrics, epochs_list, training_time
 
-def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=100, eval_every=10):
+def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=100, eval_every=10, 
+                test_neg_ratio=20, fast_mode=False):
     """
     Run the complete recommender system pipeline
     
@@ -189,9 +190,14 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         user_features_file: User features file
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
+        test_neg_ratio: Negative sampling ratio for test set (default 20, lower for faster execution)
+        fast_mode: If True, use a smaller dataset and skip some evaluations
     """
     print(f"Using {NUM_THREADS} CPU threads")
     print(f"Data directory: {DATA_DIR}")
+    
+    if fast_mode:
+        print("FAST MODE ENABLED: Using reduced dataset and evaluations")
     
     matrix_path = DATA_DIR / matrix_file
     item_categories_path = DATA_DIR / item_categories_file
@@ -224,6 +230,13 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
     
     print("\nFiltering users and items with >= 3 positive interactions...")
     filtered_df, valid_users, valid_items = filter_interactions(interactions_df)
+    
+    # Échantillonner les données en mode rapide
+    if fast_mode and len(valid_users) > 500:
+        sampled_users = np.random.choice(valid_users, 500, replace=False)
+        filtered_df = filtered_df[filtered_df['user_id'].isin(sampled_users)]
+        valid_users = sampled_users
+        print(f"Fast mode: Sampled down to {len(valid_users)} users")
     
     user_to_idx, idx_to_user, item_to_idx, idx_to_item = create_user_item_maps(valid_users, valid_items)
     
@@ -266,7 +279,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         baseline_test_metrics, 
         metric_names, 
         baseline_epochs, 
-        'baseline'
+        'Baseline Model'
     )
     
     print("\nPlotting learning curves for hybrid model...")
@@ -275,7 +288,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         hybrid_test_metrics, 
         metric_names, 
         hybrid_epochs, 
-        'hybrid'
+        'Hybrid Model'
     )
     
     final_baseline = baseline_test_metrics[-1]
@@ -308,9 +321,15 @@ if __name__ == "__main__":
     parser.add_argument('--matrix', type=str, default='small_matrix.csv', 
                         help='Interaction matrix file (small_matrix.csv or big_matrix.csv)')
     parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser.add_argument('--eval_every', type=int, default=10, help='Evaluate every N epochs')
+    parser.add_argument('--eval_every', type=int, default=33, help='Evaluate every N epochs')
     parser.add_argument('--data_dir', type=str, default=None, 
                         help='Custom data directory path (overrides default)')
+    parser.add_argument('--test_neg_ratio', type=int, default=20, 
+                        help='Negative sampling ratio for test set (lower for faster execution)')
+    parser.add_argument('--fast', action='store_true', 
+                        help='Run in fast mode with reduced dataset and evaluations')
+    parser.add_argument('--threads', type=int, default=None, 
+                        help='Number of threads to use (default: auto-detected)')
     
     args = parser.parse_args()
     
@@ -318,10 +337,16 @@ if __name__ == "__main__":
         DATA_DIR = Path(args.data_dir)
         print(f"Using custom data directory: {DATA_DIR}")
     
+    if args.threads:
+        NUM_THREADS = args.threads
+        print(f"Using {NUM_THREADS} threads as specified")
+    
     results = run_pipeline(
         args.matrix,
         'item_categories.csv',
         'user_features.csv',
         epochs=args.epochs,
-        eval_every=args.eval_every
+        eval_every=args.eval_every,
+        test_neg_ratio=args.test_neg_ratio,
+        fast_mode=args.fast
     ) 

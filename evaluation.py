@@ -298,11 +298,13 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
     
     # Get item embeddings
     item_embeddings = model.item_embeddings
-    embedding_size = len(item_embeddings)
+    embedding_size = item_embeddings.shape[0]  # Correct dimension
     
-    for user_idx in tqdm(unique_users, desc=f"Calculating diversity@{k}", leave=False):
-        # Get all possible items
-        all_items = np.arange(n_items)
+    sampled_users = np.random.choice(unique_users, min(100, len(unique_users)), replace=False)
+    
+    for user_idx in tqdm(sampled_users, desc=f"Calculating diversity@{k}", leave=False):
+        # Get all possible items but limit to embedding size
+        all_items = np.arange(min(n_items, embedding_size))
         
         # Predict scores
         scores = model.predict(
@@ -315,9 +317,6 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
         # Get top k items
         top_k_items = all_items[np.argsort(-scores)[:k]]
         
-        # Filter out items that are out of bounds
-        top_k_items = [item for item in top_k_items if item < embedding_size]
-        
         if len(top_k_items) <= 1:
             continue
             
@@ -329,10 +328,6 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
             for j in range(i+1, len(top_k_items)):
                 item_i = top_k_items[i]
                 item_j = top_k_items[j]
-                
-                # Skip if item indices are out of bounds
-                if item_i >= embedding_size or item_j >= embedding_size:
-                    continue
                 
                 # Calculate cosine distance
                 embedding_i = item_embeddings[item_i]

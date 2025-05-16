@@ -1,6 +1,69 @@
 # KuaiRec 2.0 Recommender System
 
-This repository implements a two-stage recommender system pipeline for the KuaiRec 2.0 dataset, comparing a baseline collaborative filtering model with a hybrid model that incorporates side features.
+Ce projet implémente un système de recommandation à deux étapes pour le dataset KuaiRec 2.0, comparant un modèle de filtrage collaboratif de référence avec un modèle hybride qui incorpore des caractéristiques secondaires.
+
+## Installation
+
+```bash
+# Créer un environnement virtuel Python
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scripts\activate     # Windows
+
+# Installer les dépendances
+pip install -r requirements.txt
+```
+
+## Exécution optimisée
+
+Pour une exécution optimisée, plusieurs options sont disponibles:
+
+### Mode rapide (échantillonnage et évaluations réduites)
+
+```bash
+python main.py --fast --epochs 20 --eval_every 5 --test_neg_ratio 10
+```
+
+### Configuration des threads
+
+```bash
+# Spécifier manuellement le nombre de threads (utile sur serveurs avec beaucoup de cœurs)
+python main.py --threads 8 --epochs 50
+```
+
+### Mode standard avec paramètres optimisés
+
+```bash
+python main.py --epochs 50 --eval_every 10 --test_neg_ratio 20
+```
+
+### Mode complet (lent, mais résultats plus précis)
+
+```bash
+python main.py --epochs 100 --test_neg_ratio 99
+```
+
+## Résolution des problèmes courants
+
+- **Erreur de mémoire**: Réduire `test_neg_ratio` (défaut: 20) et utiliser le mode `--fast`
+- **Performance lente**: Augmenter le nombre de threads, réduire `eval_every` et utiliser le mode `--fast`
+- **Précision insuffisante**: Augmenter `epochs` et `test_neg_ratio`, désactiver le mode `--fast`
+
+## Exécution sur différents matériels
+
+### CPU multi-cœurs
+- Augmenter les threads selon les capacités du CPU (4-8 threads généralement optimal)
+- Utiliser `--threads X` où X est ~80% des cœurs disponibles
+
+### Serveur de calcul
+- Utiliser toute la mémoire disponible pour des ratios de test plus élevés
+- Augmenter les threads selon les capacités du serveur
+
+### Machine virtuelle / Cloud
+- Choisir une instance avec plus de vCPUs
+- Ajouter swap si la mémoire est limitée
+- Réduire `test_neg_ratio` pour économiser la mémoire
 
 ## Requirements
 
