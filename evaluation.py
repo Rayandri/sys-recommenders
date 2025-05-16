@@ -298,6 +298,7 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
     
     # Get item embeddings
     item_embeddings = model.item_embeddings
+    embedding_size = len(item_embeddings)
     
     for user_idx in tqdm(unique_users, desc=f"Calculating diversity@{k}", leave=False):
         # Get all possible items
@@ -314,6 +315,9 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
         # Get top k items
         top_k_items = all_items[np.argsort(-scores)[:k]]
         
+        # Filter out items that are out of bounds
+        top_k_items = [item for item in top_k_items if item < embedding_size]
+        
         if len(top_k_items) <= 1:
             continue
             
@@ -325,6 +329,10 @@ def calculate_diversity(model, test_df, n_users, n_items, user_features=None, it
             for j in range(i+1, len(top_k_items)):
                 item_i = top_k_items[i]
                 item_j = top_k_items[j]
+                
+                # Skip if item indices are out of bounds
+                if item_i >= embedding_size or item_j >= embedding_size:
+                    continue
                 
                 # Calculate cosine distance
                 embedding_i = item_embeddings[item_i]
