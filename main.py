@@ -236,7 +236,7 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     return model, train_metrics, test_metrics, epochs_list, training_time
 
 def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=300, eval_every=10, 
-                patience=8, test_neg_ratio=49, fast_mode=False):
+                patience=8, test_neg_ratio=49, fast_mode=False, model='all'):
     """
     Run the complete recommender system pipeline
     
@@ -249,6 +249,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=3
         patience: Number of evaluations with no improvement for early stopping
         test_neg_ratio: Negative sampling ratio for test set (default 49, lower for faster execution)
         fast_mode: If True, use a smaller dataset and skip some evaluations
+        model: Which model(s) to train: baseline, hybrid, or all
     """
     print(f"Using {NUM_THREADS} CPU threads")
     print(f"Data directory: {DATA_DIR}")
@@ -308,109 +309,118 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=3
         random_state=RANDOM_SEED
     )
     
-    baseline_model, baseline_train_metrics, baseline_test_metrics, baseline_epochs, baseline_time = train_baseline_model(
-        split_data, 
-        split_data, 
-        epochs=epochs, 
-        eval_every=eval_every,
-        patience=patience
-    )
-    
-    print("\nPreparing item and user features...")
-    item_features_mat = prepare_item_features(item_categories_df, item_to_idx)
-    user_features_mat = prepare_user_features(user_features_df, user_to_idx)
-    
-    hybrid_model, hybrid_train_metrics, hybrid_test_metrics, hybrid_epochs, hybrid_time = train_hybrid_model(
-        split_data, 
-        split_data, 
-        user_features_mat, 
-        item_features_mat, 
-        epochs=epochs, 
-        eval_every=eval_every,
-        patience=patience
-    )
-    
+    baseline_model = hybrid_model = None
+    baseline_train_metrics = baseline_test_metrics = baseline_epochs = baseline_time = None
+    hybrid_train_metrics = hybrid_test_metrics = hybrid_epochs = hybrid_time = None
     metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10', 'item_coverage@10', 'f1@20', 'f1@50']
-    
-    print("\nPlotting learning curves for baseline model...")
-    plot_learning_curves(
-        baseline_train_metrics, 
-        baseline_test_metrics, 
-        metric_names, 
-        baseline_epochs, 
-        'Baseline Model'
-    )
-    
-    print("\nPlotting learning curves for hybrid model...")
-    plot_learning_curves(
-        hybrid_train_metrics, 
-        hybrid_test_metrics, 
-        metric_names, 
-        hybrid_epochs, 
-        'Hybrid Model'
-    )
-    
-    final_baseline = baseline_test_metrics[-1]
-    final_hybrid = hybrid_test_metrics[-1]
-    
-    print("\n" + "="*50)
-    print("Final Results Comparison")
-    print("="*50)
-    
-    print("\nF1 Scores at different cutoffs:")
-    for k in [5, 10, 20, 50]:
-        metric = f'f1@{k}'
-        if metric in final_baseline and metric in final_hybrid:
-            print(f"{metric}:")
-            print(f"  Baseline: {final_baseline[metric]:.4f}")
-            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
-            improvement = (final_hybrid[metric] - final_baseline[metric]) / final_baseline[metric] * 100
-            print(f"  Improvement: {improvement:.2f}%")
-    
-    print("\nPrecision at different cutoffs:")
-    for k in [5, 10, 20, 50]:
-        metric = f'precision@{k}'
-        if metric in final_baseline and metric in final_hybrid:
-            print(f"{metric}:")
-            print(f"  Baseline: {final_baseline[metric]:.4f}")
-            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
-    
-    print("\nRecall at different cutoffs:")
-    for k in [5, 10, 20, 50]:
-        metric = f'recall@{k}'
-        if metric in final_baseline and metric in final_hybrid:
-            print(f"{metric}:")
-            print(f"  Baseline: {final_baseline[metric]:.4f}")
-            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
-    
-    print("\nNDCG at different cutoffs:")
-    for k in [5, 10, 20, 50]:
-        metric = f'ndcg@{k}'
-        if metric in final_baseline and metric in final_hybrid:
-            print(f"{metric}:")
-            print(f"  Baseline: {final_baseline[metric]:.4f}")
-            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
-    
-    if 'item_coverage@10' in final_baseline:
-        print("\nOther metrics:")
-        print(f"Item Coverage@10:")
-        print(f"  Baseline: {final_baseline['item_coverage@10']:.4f}")
-        print(f"  Hybrid:   {final_hybrid['item_coverage@10']:.4f}")
-    
-    if 'diversity@10' in final_baseline:
-        print(f"Diversity@10:")
-        print(f"  Baseline: {final_baseline['diversity@10']:.4f}")
-        print(f"  Hybrid:   {final_hybrid['diversity@10']:.4f}")
-    
-    print("\nTraining times:")
-    print(f"  Baseline: {baseline_time:.2f} seconds")
-    print(f"  Hybrid:   {hybrid_time:.2f} seconds")
-    
+
+    if model in ('baseline', 'all'):
+        baseline_model, baseline_train_metrics, baseline_test_metrics, baseline_epochs, baseline_time = train_baseline_model(
+            split_data, 
+            split_data, 
+            epochs=epochs, 
+            eval_every=eval_every,
+            patience=patience
+        )
+        print("\nPlotting learning curves for baseline model...")
+        plot_learning_curves(
+            baseline_train_metrics, 
+            baseline_test_metrics, 
+            metric_names, 
+            baseline_epochs, 
+            'Baseline Model'
+        )
+
+    if model in ('hybrid', 'all'):
+        print("\nPreparing item and user features...")
+        item_features_mat = prepare_item_features(item_categories_df, item_to_idx)
+        user_features_mat = prepare_user_features(user_features_df, user_to_idx)
+        hybrid_model, hybrid_train_metrics, hybrid_test_metrics, hybrid_epochs, hybrid_time = train_hybrid_model(
+            split_data, 
+            split_data, 
+            user_features_mat, 
+            item_features_mat, 
+            epochs=epochs, 
+            eval_every=eval_every,
+            patience=patience
+        )
+        print("\nPlotting learning curves for hybrid model...")
+        plot_learning_curves(
+            hybrid_train_metrics, 
+            hybrid_test_metrics, 
+            metric_names, 
+            hybrid_epochs, 
+            'Hybrid Model'
+        )
+
+    if model == 'all':
+        final_baseline = baseline_test_metrics[-1]
+        final_hybrid = hybrid_test_metrics[-1]
+        print("\n" + "="*50)
+        print("Final Results Comparison")
+        print("="*50)
+        for k in [5, 10, 20, 50]:
+            metric = f'f1@{k}'
+            if metric in final_baseline and metric in final_hybrid:
+                print(f"{metric}:")
+                print(f"  Baseline: {final_baseline[metric]:.4f}")
+                print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+                improvement = (final_hybrid[metric] - final_baseline[metric]) / final_baseline[metric] * 100
+                print(f"  Improvement: {improvement:.2f}%")
+        print("\nPrecision at different cutoffs:")
+        for k in [5, 10, 20, 50]:
+            metric = f'precision@{k}'
+            if metric in final_baseline and metric in final_hybrid:
+                print(f"{metric}:")
+                print(f"  Baseline: {final_baseline[metric]:.4f}")
+                print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+        print("\nRecall at different cutoffs:")
+        for k in [5, 10, 20, 50]:
+            metric = f'recall@{k}'
+            if metric in final_baseline and metric in final_hybrid:
+                print(f"{metric}:")
+                print(f"  Baseline: {final_baseline[metric]:.4f}")
+                print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+        print("\nNDCG at different cutoffs:")
+        for k in [5, 10, 20, 50]:
+            metric = f'ndcg@{k}'
+            if metric in final_baseline and metric in final_hybrid:
+                print(f"{metric}:")
+                print(f"  Baseline: {final_baseline[metric]:.4f}")
+                print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+        if 'item_coverage@10' in final_baseline:
+            print("\nOther metrics:")
+            print(f"Item Coverage@10:")
+            print(f"  Baseline: {final_baseline['item_coverage@10']:.4f}")
+            print(f"  Hybrid:   {final_hybrid['item_coverage@10']:.4f}")
+        if 'diversity@10' in final_baseline:
+            print(f"Diversity@10:")
+            print(f"  Baseline: {final_baseline['diversity@10']:.4f}")
+            print(f"  Hybrid:   {final_hybrid['diversity@10']:.4f}")
+        print("\nTraining times:")
+        print(f"  Baseline: {baseline_time:.2f} seconds")
+        print(f"  Hybrid:   {hybrid_time:.2f} seconds")
+    elif model == 'baseline':
+        final_baseline = baseline_test_metrics[-1]
+        print("\nFinal Baseline Model Metrics:")
+        for k in [5, 10, 20, 50]:
+            metric = f'f1@{k}'
+            if metric in final_baseline:
+                print(f"{metric}: {final_baseline[metric]:.4f}")
+        print(f"Training time: {baseline_time:.2f} seconds")
+    elif model == 'hybrid':
+        final_hybrid = hybrid_test_metrics[-1]
+        print("\nFinal Hybrid Model Metrics:")
+        for k in [5, 10, 20, 50]:
+            metric = f'f1@{k}'
+            if metric in final_hybrid:
+                print(f"{metric}: {final_hybrid[metric]:.4f}")
+        print(f"Training time: {hybrid_time:.2f} seconds")
     return {
         'baseline_model': baseline_model,
         'hybrid_model': hybrid_model,
-        'baseline_metrics': baseline_test_metrics[-1],
-        'hybrid_metrics': hybrid_test_metrics[-1],
+        'baseline_metrics': baseline_test_metrics[-1] if baseline_test_metrics else None,
+        'hybrid_metrics': hybrid_test_metrics[-1] if hybrid_test_metrics else None,
         'baseline_time': baseline_time,
         'hybrid_time': hybrid_time
     }
@@ -431,6 +441,8 @@ if __name__ == "__main__":
                         help='Run in fast mode with reduced dataset and evaluations')
     parser.add_argument('--threads', type=int, default=None, 
                         help='Number of threads to use (default: auto-detected)')
+    parser.add_argument('--model', type=str, default='all', choices=['baseline', 'hybrid', 'all'],
+                        help='Which model(s) to train: baseline, hybrid, or all')
     
     args = parser.parse_args()
     
@@ -450,5 +462,6 @@ if __name__ == "__main__":
         eval_every=args.eval_every,
         patience=args.patience,
         test_neg_ratio=args.test_neg_ratio,
-        fast_mode=args.fast
+        fast_mode=args.fast,
+        model=args.model
     ) 
