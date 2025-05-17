@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from collections import defaultdict
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 
 def derive_implicit_labels(df, watch_ratio_threshold=0.8):
     """
@@ -194,6 +195,18 @@ def prepare_item_features(item_categories_df, item_to_idx):
     
     item_cats = item_cats[item_cats['video_id'].isin(item_to_idx.keys())]
     
+    # Add a default category for items without categories
+    missing_items = set(item_to_idx.keys()) - set(item_cats['video_id'])
+    if missing_items:
+        print(f"Adding default category for {len(missing_items)} items without categories")
+        default_rows = []
+        for item_id in missing_items:
+            default_rows.append({'video_id': item_id, 'feat': 'unknown'})
+        
+        if default_rows:
+            default_df = pd.DataFrame(default_rows)
+            item_cats = pd.concat([item_cats, default_df])
+    
     item_features = []
     item_indices = []
     feature_indices = []
@@ -205,11 +218,13 @@ def prepare_item_features(item_categories_df, item_to_idx):
             categories = [cat.strip() for cat in feat.split(',')]
             all_categories.update(categories)
     
+    # Add unknown category
+    all_categories.add('unknown')
+    
     category_to_idx = {cat: i for i, cat in enumerate(sorted(all_categories))}
     
     print(f"Total unique categories: {len(category_to_idx)}")
     
-    feature_idx = 0
     for idx, row in tqdm(item_cats.iterrows(), total=len(item_cats), desc="Building feature matrix"):
         if row['video_id'] not in item_to_idx:
             continue
@@ -220,11 +235,22 @@ def prepare_item_features(item_categories_df, item_to_idx):
         if isinstance(row['feat'], str):
             categories = [cat.strip() for cat in row['feat'].split(',')]
             
-            for cat in categories:
-                if cat in category_to_idx:
-                    item_indices.append(item_idx)
-                    feature_indices.append(category_to_idx[cat])
-                    item_features.append(1.0)  # Using binary features
+            # If no valid categories, add unknown
+            if not categories or not any(cat in category_to_idx for cat in categories):
+                item_indices.append(item_idx)
+                feature_indices.append(category_to_idx['unknown'])
+                item_features.append(1.0)
+            else:
+                for cat in categories:
+                    if cat in category_to_idx:
+                        item_indices.append(item_idx)
+                        feature_indices.append(category_to_idx[cat])
+                        item_features.append(1.0)
+        else:
+            # For items with no feat value, add unknown
+            item_indices.append(item_idx)
+            feature_indices.append(category_to_idx['unknown'])
+            item_features.append(1.0)
     
     print("Creating sparse feature matrix...")
     n_items = len(item_to_idx)
@@ -236,14 +262,13 @@ def prepare_item_features(item_categories_df, item_to_idx):
         shape=(n_items, n_features)
     )
     
-    # Add normalization to avoid feature dominance
-    # Normalize rows to sum to 1.0 (if they have any features)
-    row_sums = item_features_mat.sum(axis=1).A1
-    nonzero_rows = row_sums > 0
-    if nonzero_rows.any():
-        item_features_mat[nonzero_rows] = item_features_mat[nonzero_rows].multiply(
-            1.0 / row_sums[nonzero_rows][:, np.newaxis]
-        )
+    # Use softer normalization - L2 norm instead of sum-to-1
+    # This preserves more information while still preventing dominance
+    for i in range(n_items):
+        row = item_features_mat.getrow(i)
+        norm = np.sqrt((row.multiply(row)).sum())
+        if norm > 0:
+            item_features_mat[i] = row / norm
     
     print(f"Item feature matrix shape: {item_features_mat.shape}")
     sparsity = 1.0 - item_features_mat.nnz / (item_features_mat.shape[0] * item_features_mat.shape[1])
@@ -266,7 +291,20 @@ def prepare_user_features(user_features_df, user_to_idx):
     user_feats = user_features_df.copy()
     
     # Keep only users in the user_to_idx mapping
-    user_feats = user_feats[user_feats['user_id'].isin(user_to_idx.keys())]
+    user_feats = user_feats[user_feats['user_id'].isin(user_to_idx.keys())].copy()
+    
+    # Add missing users with default values
+    missing_users = set(user_to_idx.keys()) - set(user_feats['user_id'])
+    if missing_users:
+        print(f"Adding default features for {len(missing_users)} missing users")
+        default_rows = []
+        for user_id in missing_users:
+            default_row = {'user_id': user_id}
+            default_rows.append(default_row)
+        
+        if default_rows:
+            default_df = pd.DataFrame(default_rows)
+            user_feats = pd.concat([user_feats, default_df])
     
     # Extract numerical features that actually exist in the DataFrame
     numerical_features = []
@@ -276,13 +314,14 @@ def prepare_user_features(user_features_df, user_to_idx):
     
     print(f"Using numerical features: {numerical_features}")
     
-    # Set NaNs to mean values
+    # Fill NaNs with median values (more robust than mean)
     for col in numerical_features:
         if col in user_feats.columns:
-            user_feats[col] = user_feats[col].fillna(user_feats[col].mean())
+            median = user_feats[col].median()
+            user_feats[col] = user_feats[col].fillna(median)
     
-    # Standardize numerical features
-    scaler = StandardScaler()
+    # Use RobustScaler to handle outliers better
+    scaler = RobustScaler()
     if len(numerical_features) > 0:
         # Make sure all columns in numerical_features exist in the DataFrame
         existing_numerical = [col for col in numerical_features if col in user_feats.columns]
@@ -297,6 +336,12 @@ def prepare_user_features(user_features_df, user_to_idx):
             categorical_features.append(col)
     
     print(f"Using categorical features: {categorical_features}")
+    
+    # Fill categorical NaNs with most common value
+    for col in categorical_features:
+        if col in user_feats.columns:
+            most_common = user_feats[col].mode()[0]
+            user_feats[col] = user_feats[col].fillna(most_common)
             
     # Create sparse feature matrix
     user_indices = []
@@ -351,6 +396,13 @@ def prepare_user_features(user_features_df, user_to_idx):
         (feature_values, (user_indices, feature_indices)),
         shape=(n_users, n_features)
     )
+    
+    # L2 normalization for consistent scaling
+    for i in range(n_users):
+        row = user_features_mat.getrow(i)
+        norm = np.sqrt((row.multiply(row)).sum())
+        if norm > 0:
+            user_features_mat[i] = row / norm
     
     print(f"User feature matrix shape: {user_features_mat.shape}")
     sparsity = 1.0 - user_features_mat.nnz / (user_features_mat.shape[0] * user_features_mat.shape[1])

@@ -38,13 +38,16 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10, patie
         Trained model and evaluation metrics
     """
     print("\n" + "="*50)
-    print("Training Baseline Model (LightFM with BPR loss)")
+    print("Training Baseline Model (LightFM with WARP loss)")
     print("="*50)
     
     model = lightfm.LightFM(
-        loss="bpr",
-        no_components=64,
+        loss="warp",
+        no_components=128,
         learning_rate=0.05,
+        user_alpha=0.0001,
+        item_alpha=0.0001,
+        max_sampled=100,
         random_state=RANDOM_SEED
     )
     
@@ -88,7 +91,7 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10, patie
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
-            current_score = test_metric['f1@5']  # Metric to monitor
+            current_score = test_metric['f1@5']
             
             if current_score > best_score:
                 best_score = current_score
@@ -143,11 +146,12 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     print("="*50)
     
     model = lightfm.LightFM(
-        loss="bpr",
-        no_components=64,
-        learning_rate=0.05,
-        item_alpha=0.0,
-        user_alpha=0.0,
+        loss="warp",
+        no_components=128,
+        learning_rate=0.02,
+        item_alpha=0.0001,
+        user_alpha=0.0001,
+        max_sampled=50,
         random_state=RANDOM_SEED
     )
     
@@ -197,7 +201,7 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
-            current_score = test_metric['f1@5']  # Metric to monitor
+            current_score = test_metric['f1@5']
             
             if current_score > best_score:
                 best_score = current_score
@@ -326,7 +330,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         patience=patience
     )
     
-    metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10']
+    metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10', 'item_coverage@10']
     
     print("\nPlotting learning curves for baseline model...")
     plot_learning_curves(
@@ -353,10 +357,12 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
     print("Final Results Comparison")
     print("="*50)
     for metric in metric_names:
-        print(f"{metric}:")
-        print(f"  Baseline: {final_baseline[metric]:.4f}")
-        print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
-        print(f"  Improvement: {(final_hybrid[metric] - final_baseline[metric]) / final_baseline[metric] * 100:.2f}%")
+        if metric in final_baseline and metric in final_hybrid:
+            print(f"{metric}:")
+            print(f"  Baseline: {final_baseline[metric]:.4f}")
+            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+            improvement = (final_hybrid[metric] - final_baseline[metric]) / final_baseline[metric] * 100
+            print(f"  Improvement: {improvement:.2f}%")
     
     print("\nTraining times:")
     print(f"  Baseline: {baseline_time:.2f} seconds")
@@ -375,9 +381,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run the recommender system pipeline')
     parser.add_argument('--matrix', type=str, default='small_matrix.csv', 
                         help='Interaction matrix file (small_matrix.csv or big_matrix.csv)')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
-    parser.add_argument('--eval_every', type=int, default=33, help='Evaluate every N epochs')
-    parser.add_argument('--patience', type=int, default=3, 
+    parser.add_argument('--epochs', type=int, default=200, help='Number of training epochs')
+    parser.add_argument('--eval_every', type=int, default=10, help='Evaluate every N epochs')
+    parser.add_argument('--patience', type=int, default=5, 
                         help='Number of evaluations with no improvement before early stopping')
     parser.add_argument('--data_dir', type=str, default=None, 
                         help='Custom data directory path (overrides default)')

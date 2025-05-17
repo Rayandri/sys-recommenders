@@ -252,23 +252,36 @@ def calculate_coverage(model, test_df, n_users, n_items, user_features=None, ite
         Coverage percentage
     """
     unique_users = test_df['user_idx'].unique()
+    
+    # Sample users for efficiency if there are too many
+    if len(unique_users) > 200:
+        unique_users = np.random.choice(unique_users, 200, replace=False)
+        
     recommended_items = set()
     
+    # Process in batches to handle large item counts
+    batch_size = 1000
+    
     for user_idx in tqdm(unique_users, desc=f"Calculating coverage@{k}", leave=False):
-        # Get all possible items
-        all_items = np.arange(n_items)
-        
-        # Predict scores
-        scores = model.predict(
-            user_ids=np.repeat(user_idx, len(all_items)),
-            item_ids=all_items,
-            user_features=user_features,
-            item_features=item_features
-        )
-        
-        # Get top k items
-        top_k_items = all_items[np.argsort(-scores)[:k]]
-        recommended_items.update(top_k_items)
+        # Process items in batches
+        for start_idx in range(0, n_items, batch_size):
+            end_idx = min(start_idx + batch_size, n_items)
+            batch_items = np.arange(start_idx, end_idx)
+            
+            # Predict scores for this batch
+            scores = model.predict(
+                user_ids=np.repeat(user_idx, len(batch_items)),
+                item_ids=batch_items,
+                user_features=user_features,
+                item_features=item_features
+            )
+            
+            # Get top k items from this batch
+            top_items_in_batch = batch_items[np.argsort(-scores)[:min(k, len(batch_items))]]
+            
+            # Add to set of all recommended items for this user
+            for item in top_items_in_batch:
+                recommended_items.add(item)
     
     # Calculate coverage
     coverage = len(recommended_items) / n_items
