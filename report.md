@@ -82,11 +82,11 @@ The evaluation is conducted on the held-out test set for each user.
 
 | Metric | Baseline | Hybrid | Improvement |
 |--------|----------|--------|-------------|
-| Precision@5 | x.xxx | x.xxx | xx.x% |
-| Recall@5 | x.xxx | x.xxx | xx.x% |
-| F1@5 | x.xxx | x.xxx | xx.x% |
-| Recall@10 | x.xxx | x.xxx | xx.x% |
-| NDCG@10 | x.xxx | x.xxx | xx.x% |
+| Precision@5 | 0.5018952062430324 | x.xxx | xx.x% |
+| Recall@5 | 0.02233935556887301 | x.xxx | xx.x% |
+| F1@5 | 0.04134034027349634 | x.xxx | xx.x% |
+| Recall@10 | 0.03901266362974977 | x.xxx | xx.x% |
+| NDCG@10 | 0.5683637303323829 | x.xxx | xx.x% |
 
 *Note: The table above will be filled with actual values after running the experiments.*
 
