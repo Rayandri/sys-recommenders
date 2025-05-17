@@ -19,7 +19,7 @@ conda config --set channel_priority strict
 
 # Installer les packages essentiels
 echo "Installation des packages scientifiques et ML..."
-conda install -y numpy scipy pandas matplotlib tqdm
+conda install -y numpy scipy pandas matplotlib tqdm scikit-learn
 
 # Installer LightFM
 echo "Installation de LightFM..."
@@ -33,6 +33,8 @@ conda install -y "libblas=*=*mkl" -c conda-forge
 echo "Installation de Jupyter et ipykernel pour VS Code..."
 conda install -y jupyter ipykernel
 
+# Enregistrer le kernel pour Jupyter
+python -m ipykernel install --user --name=$ENV_NAME --display-name="Python ($ENV_NAME)"
 
 # Afficher le chemin Python pour configuration VSCode
 PYTHON_PATH=$(which python)
