@@ -15,40 +15,38 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-## Exécution optimisée
-
-Pour une exécution optimisée, plusieurs options sont disponibles:
-
-### Mode rapide (échantillonnage et évaluations réduites)
+## Exécution standard (entraînement complet)
 
 ```bash
-python main.py --fast --epochs 20 --eval_every 5 --test_neg_ratio 10
+python main.py --matrix big_matrix.csv --epochs 200 --test_neg_ratio 99
 ```
 
-### Configuration des threads
+## Choix du modèle à entraîner/évaluer
+
+L'argument `--model` permet de choisir quel modèle exécuter :
+
+- `--model baseline` : entraîne et évalue uniquement le modèle de base (LightFM sans features)
+- `--model hybrid` : entraîne et évalue uniquement le modèle hybride (LightFM avec features)
+- `--model all` : entraîne et compare les deux modèles (par défaut)
+
+Exemple :
+
+```bash
+python main.py --matrix big_matrix.csv --model hybrid --epochs 200
+```
+
+## Configuration des threads
 
 ```bash
 # Spécifier manuellement le nombre de threads (utile sur serveurs avec beaucoup de cœurs)
-python main.py --threads 8 --epochs 50
-```
-
-### Mode standard avec paramètres optimisés
-
-```bash
-python main.py --epochs 50 --eval_every 10 --test_neg_ratio 20
-```
-
-### Mode complet (lent, mais résultats plus précis)
-
-```bash
-python main.py --epochs 100 --test_neg_ratio 99
+python main.py --threads 8 --epochs 200
 ```
 
 ## Résolution des problèmes courants
 
-- **Erreur de mémoire**: Réduire `test_neg_ratio` (défaut: 20) et utiliser le mode `--fast`
-- **Performance lente**: Augmenter le nombre de threads, réduire `eval_every` et utiliser le mode `--fast`
-- **Précision insuffisante**: Augmenter `epochs` et `test_neg_ratio`, désactiver le mode `--fast`
+- **Erreur de mémoire**: Réduire `test_neg_ratio`
+- **Performance lente**: Augmenter le nombre de threads
+- **Précision insuffisante**: Augmenter `epochs` et `test_neg_ratio`
 
 ## Exécution sur différents matériels
 
@@ -105,14 +103,17 @@ python main.py --matrix small_matrix.csv
 To run with the big matrix (for final evaluation):
 
 ```bash
-python main.py --matrix big_matrix.csv
+python main.py --matrix big_matrix.csv --model all --epochs 200 --test_neg_ratio 99
 ```
 
 ### Command Line Arguments
 
 - `--matrix`: Specifies which interaction matrix to use (default: `small_matrix.csv`)
-- `--epochs`: Number of training epochs (default: `100`)
+- `--epochs`: Number of training epochs (default: `200`)
 - `--eval_every`: Evaluate model every N epochs (default: `10`)
+- `--test_neg_ratio`: Negative ratio for evaluation (default: `99`)
+- `--model`: Model to train (`baseline`, `hybrid`, `all`)
+- `--threads`: Number of threads to use
 - `--data_dir`: Custom data directory path (optional, overrides default path)
 
 ## Project Structure
@@ -120,22 +121,4 @@ python main.py --matrix big_matrix.csv
 - `loaddata.py`: Data loading utilities
 - `preprocess.py`: Data preprocessing functions
 - `evaluation.py`: Evaluation metrics implementation
-- `main.py`: Main pipeline orchestration
-- `report.md`: Report template for summarizing findings
-
-## Pipeline Steps
-
-1. Load and explore data
-2. Derive implicit labels (positive if watch_ratio ≥ 0.8)
-3. Filter users and items with ≥ 3 positive interactions
-4. Split data into train/test sets (leave-N-out strategy)
-5. Train and evaluate baseline model (LightFM with BPR loss)
-6. Train and evaluate hybrid model (LightFM with side features)
-7. Compare results and plot learning curves
-
-## Output
-
-The pipeline produces:
-- Learning curve plots saved as PNG files
-- Detailed metrics in the console output
-- Results can be used to update the `report.md` file
+- `
