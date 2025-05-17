@@ -206,7 +206,7 @@ def evaluate_model(model, test_df, n_users, n_items, user_features=None, item_fe
     metrics = {}
     
     # Calculate precision@k
-    for k in [5, 10, 25, 50, 100, 1000]:
+    for k in [5, 10, 15, 20, 50, 100]:
         metrics[f'precision@{k}'] = precision_at_k(
             model, test_df, n_users, n_items, user_features, item_features, k
         )
