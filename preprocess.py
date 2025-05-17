@@ -7,7 +7,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import RobustScaler
 
-def derive_implicit_labels(df, watch_ratio_threshold=0.8):
+def derive_implicit_labels(df, watch_ratio_threshold=0.7):
     """
     Derive implicit feedback labels based on watch ratio
     

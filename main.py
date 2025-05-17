@@ -43,11 +43,11 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10, patie
     
     model = lightfm.LightFM(
         loss="warp",
-        no_components=128,
-        learning_rate=0.05,
-        user_alpha=0.0001,
-        item_alpha=0.0001,
-        max_sampled=100,
+        no_components=256,
+        learning_rate=0.03,
+        user_alpha=0.0005,
+        item_alpha=0.0005,
+        max_sampled=150,
         random_state=RANDOM_SEED
     )
     
@@ -147,11 +147,11 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     
     model = lightfm.LightFM(
         loss="warp",
-        no_components=128,
-        learning_rate=0.02,
-        item_alpha=0.0001,
-        user_alpha=0.0001,
-        max_sampled=50,
+        no_components=256,
+        learning_rate=0.03,
+        item_alpha=0.0005,
+        user_alpha=0.0005,
+        max_sampled=150,
         random_state=RANDOM_SEED
     )
     
@@ -235,8 +235,8 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     
     return model, train_metrics, test_metrics, epochs_list, training_time
 
-def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=100, eval_every=10, 
-                patience=5, test_neg_ratio=20, fast_mode=False):
+def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=300, eval_every=10, 
+                patience=8, test_neg_ratio=49, fast_mode=False):
     """
     Run the complete recommender system pipeline
     
@@ -247,7 +247,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
         patience: Number of evaluations with no improvement for early stopping
-        test_neg_ratio: Negative sampling ratio for test set (default 20, lower for faster execution)
+        test_neg_ratio: Negative sampling ratio for test set (default 49, lower for faster execution)
         fast_mode: If True, use a smaller dataset and skip some evaluations
     """
     print(f"Using {NUM_THREADS} CPU threads")
@@ -280,7 +280,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
     print(f"Item categories shape: {item_categories_df.shape}")
     print(f"User features shape: {user_features_df.shape}")
     
-    print("\nDeriving implicit labels (watch_ratio >= 0.8)...")
+    print("\nDeriving implicit labels (watch_ratio >= 0.7)...")
     interactions_df = derive_implicit_labels(interactions_df)
     positive_ratio = interactions_df['label'].mean()
     print(f"Positive interactions ratio: {positive_ratio:.4f}")
@@ -303,8 +303,8 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         user_to_idx, 
         item_to_idx, 
         test_ratio=0.2, 
-        neg_ratio=4, 
-        test_neg_ratio=99, 
+        neg_ratio=8, 
+        test_neg_ratio=test_neg_ratio, 
         random_state=RANDOM_SEED
     )
     
@@ -330,7 +330,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         patience=patience
     )
     
-    metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10', 'item_coverage@10']
+    metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10', 'item_coverage@10', 'f1@20', 'f1@50']
     
     print("\nPlotting learning curves for baseline model...")
     plot_learning_curves(
@@ -356,13 +356,51 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
     print("\n" + "="*50)
     print("Final Results Comparison")
     print("="*50)
-    for metric in metric_names:
+    
+    print("\nF1 Scores at different cutoffs:")
+    for k in [5, 10, 20, 50]:
+        metric = f'f1@{k}'
         if metric in final_baseline and metric in final_hybrid:
             print(f"{metric}:")
             print(f"  Baseline: {final_baseline[metric]:.4f}")
             print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
             improvement = (final_hybrid[metric] - final_baseline[metric]) / final_baseline[metric] * 100
             print(f"  Improvement: {improvement:.2f}%")
+    
+    print("\nPrecision at different cutoffs:")
+    for k in [5, 10, 20, 50]:
+        metric = f'precision@{k}'
+        if metric in final_baseline and metric in final_hybrid:
+            print(f"{metric}:")
+            print(f"  Baseline: {final_baseline[metric]:.4f}")
+            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+    
+    print("\nRecall at different cutoffs:")
+    for k in [5, 10, 20, 50]:
+        metric = f'recall@{k}'
+        if metric in final_baseline and metric in final_hybrid:
+            print(f"{metric}:")
+            print(f"  Baseline: {final_baseline[metric]:.4f}")
+            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+    
+    print("\nNDCG at different cutoffs:")
+    for k in [5, 10, 20, 50]:
+        metric = f'ndcg@{k}'
+        if metric in final_baseline and metric in final_hybrid:
+            print(f"{metric}:")
+            print(f"  Baseline: {final_baseline[metric]:.4f}")
+            print(f"  Hybrid:   {final_hybrid[metric]:.4f}")
+    
+    if 'item_coverage@10' in final_baseline:
+        print("\nOther metrics:")
+        print(f"Item Coverage@10:")
+        print(f"  Baseline: {final_baseline['item_coverage@10']:.4f}")
+        print(f"  Hybrid:   {final_hybrid['item_coverage@10']:.4f}")
+    
+    if 'diversity@10' in final_baseline:
+        print(f"Diversity@10:")
+        print(f"  Baseline: {final_baseline['diversity@10']:.4f}")
+        print(f"  Hybrid:   {final_hybrid['diversity@10']:.4f}")
     
     print("\nTraining times:")
     print(f"  Baseline: {baseline_time:.2f} seconds")
@@ -381,13 +419,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run the recommender system pipeline')
     parser.add_argument('--matrix', type=str, default='small_matrix.csv', 
                         help='Interaction matrix file (small_matrix.csv or big_matrix.csv)')
-    parser.add_argument('--epochs', type=int, default=200, help='Number of training epochs')
+    parser.add_argument('--epochs', type=int, default=300, help='Number of training epochs')
     parser.add_argument('--eval_every', type=int, default=10, help='Evaluate every N epochs')
-    parser.add_argument('--patience', type=int, default=5, 
+    parser.add_argument('--patience', type=int, default=8, 
                         help='Number of evaluations with no improvement before early stopping')
     parser.add_argument('--data_dir', type=str, default=None, 
                         help='Custom data directory path (overrides default)')
-    parser.add_argument('--test_neg_ratio', type=int, default=20, 
+    parser.add_argument('--test_neg_ratio', type=int, default=49, 
                         help='Negative sampling ratio for test set (lower for faster execution)')
     parser.add_argument('--fast', action='store_true', 
                         help='Run in fast mode with reduced dataset and evaluations')
