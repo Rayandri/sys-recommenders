@@ -23,7 +23,7 @@ NUM_THREADS = mp.cpu_count()
 SCRIPT_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = SCRIPT_DIR / "KuaiRec2.0" / "data"
 
-def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
+def train_baseline_model(train_data, test_data, epochs=100, eval_every=10, patience=5):
     """
     Train a baseline LightFM model using only user-item interactions
     
@@ -32,6 +32,7 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
         test_data: Dictionary with test data
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
+        patience: Number of evaluations with no improvement after which training will stop
         
     Returns:
         Trained model and evaluation metrics
@@ -52,6 +53,11 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
     epochs_list = []
     
     start_time = time.time()
+    
+    best_score = -float('inf')
+    best_epoch = 0
+    best_model = None
+    no_improvement = 0
     
     progress_bar = tqdm(range(1, epochs + 1), desc="Training baseline model")
     for epoch in progress_bar:
@@ -82,13 +88,33 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
+            current_score = test_metric['f1@5']  # Metric to monitor
+            
+            if current_score > best_score:
+                best_score = current_score
+                best_epoch = epoch
+                best_model = model.get_params()
+                no_improvement = 0
+            else:
+                no_improvement += 1
+                
             progress_bar.set_postfix({
                 'train_f1@5': f"{train_metric['f1@5']:.4f}",
-                'test_f1@5': f"{test_metric['f1@5']:.4f}"
+                'test_f1@5': f"{test_metric['f1@5']:.4f}",
+                'best_f1@5': f"{best_score:.4f}",
+                'no_improv': no_improvement
             })
+            
+            if no_improvement >= patience:
+                print(f"\nEarly stopping at epoch {epoch}. Best epoch was {best_epoch} with f1@5 = {best_score:.4f}")
+                break
     
     training_time = time.time() - start_time
     print(f"\nTotal training time: {training_time:.2f} seconds")
+    
+    if best_model is not None and no_improvement >= patience:
+        print("Restoring best model...")
+        model = lightfm.LightFM(**best_model)
     
     print("\nFinal metrics:")
     print(f"  Train: {train_metrics[-1]}")
@@ -96,7 +122,7 @@ def train_baseline_model(train_data, test_data, epochs=100, eval_every=10):
     
     return model, train_metrics, test_metrics, epochs_list, training_time
 
-def train_hybrid_model(train_data, test_data, user_features, item_features, epochs=100, eval_every=10):
+def train_hybrid_model(train_data, test_data, user_features, item_features, epochs=100, eval_every=10, patience=5):
     """
     Train a hybrid LightFM model using user-item interactions and side features
     
@@ -107,6 +133,7 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
         item_features: Item features matrix
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
+        patience: Number of evaluations with no improvement after which training will stop
         
     Returns:
         Trained model and evaluation metrics
@@ -129,6 +156,11 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     epochs_list = []
     
     start_time = time.time()
+    
+    best_score = -float('inf')
+    best_epoch = 0
+    best_model = None
+    no_improvement = 0
     
     progress_bar = tqdm(range(1, epochs + 1), desc="Training hybrid model")
     for epoch in progress_bar:
@@ -165,13 +197,33 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
             test_metrics.append(test_metric)
             epochs_list.append(epoch)
             
+            current_score = test_metric['f1@5']  # Metric to monitor
+            
+            if current_score > best_score:
+                best_score = current_score
+                best_epoch = epoch
+                best_model = model.get_params()
+                no_improvement = 0
+            else:
+                no_improvement += 1
+                
             progress_bar.set_postfix({
                 'train_f1@5': f"{train_metric['f1@5']:.4f}",
-                'test_f1@5': f"{test_metric['f1@5']:.4f}"
+                'test_f1@5': f"{test_metric['f1@5']:.4f}",
+                'best_f1@5': f"{best_score:.4f}",
+                'no_improv': no_improvement
             })
+            
+            if no_improvement >= patience:
+                print(f"\nEarly stopping at epoch {epoch}. Best epoch was {best_epoch} with f1@5 = {best_score:.4f}")
+                break
     
     training_time = time.time() - start_time
     print(f"\nTotal training time: {training_time:.2f} seconds")
+    
+    if best_model is not None and no_improvement >= patience:
+        print("Restoring best model...")
+        model = lightfm.LightFM(**best_model)
     
     print("\nFinal metrics:")
     print(f"  Train: {train_metrics[-1]}")
@@ -180,7 +232,7 @@ def train_hybrid_model(train_data, test_data, user_features, item_features, epoc
     return model, train_metrics, test_metrics, epochs_list, training_time
 
 def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=100, eval_every=10, 
-                test_neg_ratio=20, fast_mode=False):
+                patience=5, test_neg_ratio=20, fast_mode=False):
     """
     Run the complete recommender system pipeline
     
@@ -190,6 +242,7 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         user_features_file: User features file
         epochs: Number of training epochs
         eval_every: Evaluate every N epochs
+        patience: Number of evaluations with no improvement for early stopping
         test_neg_ratio: Negative sampling ratio for test set (default 20, lower for faster execution)
         fast_mode: If True, use a smaller dataset and skip some evaluations
     """
@@ -255,7 +308,8 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         split_data, 
         split_data, 
         epochs=epochs, 
-        eval_every=eval_every
+        eval_every=eval_every,
+        patience=patience
     )
     
     print("\nPreparing item and user features...")
@@ -268,7 +322,8 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=1
         user_features_mat, 
         item_features_mat, 
         epochs=epochs, 
-        eval_every=eval_every
+        eval_every=eval_every,
+        patience=patience
     )
     
     metric_names = ['precision@5', 'recall@5', 'f1@5', 'recall@10', 'ndcg@10']
@@ -322,6 +377,8 @@ if __name__ == "__main__":
                         help='Interaction matrix file (small_matrix.csv or big_matrix.csv)')
     parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
     parser.add_argument('--eval_every', type=int, default=33, help='Evaluate every N epochs')
+    parser.add_argument('--patience', type=int, default=3, 
+                        help='Number of evaluations with no improvement before early stopping')
     parser.add_argument('--data_dir', type=str, default=None, 
                         help='Custom data directory path (overrides default)')
     parser.add_argument('--test_neg_ratio', type=int, default=20, 
@@ -347,6 +404,7 @@ if __name__ == "__main__":
         'user_features.csv',
         epochs=args.epochs,
         eval_every=args.eval_every,
+        patience=args.patience,
         test_neg_ratio=args.test_neg_ratio,
         fast_mode=args.fast
     ) 
