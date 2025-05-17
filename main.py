@@ -8,6 +8,7 @@ from tqdm import tqdm
 import multiprocessing as mp
 import lightfm
 import os
+import json
 
 from loaddata import load_interaction_data, load_item_categories, load_user_features, print_dataset_info
 from preprocess import (
@@ -416,13 +417,33 @@ def run_pipeline(matrix_file, item_categories_file, user_features_file, epochs=3
             if metric in final_hybrid:
                 print(f"{metric}: {final_hybrid[metric]:.4f}")
         print(f"Training time: {hybrid_time:.2f} seconds")
+    # Prepare results dictionary
+    results_dict = {
+        'matrix_file': matrix_file,
+        'baseline_metrics': baseline_test_metrics[-1] if baseline_test_metrics else None,
+        'hybrid_metrics': hybrid_test_metrics[-1] if hybrid_test_metrics else None,
+        'baseline_time': baseline_time,
+        'hybrid_time': hybrid_time,
+        'epochs': epochs,
+        'test_neg_ratio': test_neg_ratio,
+        'timestamp': time.strftime("%Y%m%d-%H%M%S")
+    }
+    
+    # Save results to JSON file
+    results_file = f"results_{matrix_file.replace('.csv', '')}_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    with open(results_file, 'w') as f:
+        json.dump(results_dict, f, indent=2, default=lambda x: float(x) if isinstance(x, np.float32) else x)
+    
+    print(f"\nResults saved to {results_file}")
+    
     return {
         'baseline_model': baseline_model,
         'hybrid_model': hybrid_model,
         'baseline_metrics': baseline_test_metrics[-1] if baseline_test_metrics else None,
         'hybrid_metrics': hybrid_test_metrics[-1] if hybrid_test_metrics else None,
         'baseline_time': baseline_time,
-        'hybrid_time': hybrid_time
+        'hybrid_time': hybrid_time,
+        'results_file': results_file
     }
 
 if __name__ == "__main__":
